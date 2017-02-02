@@ -61,6 +61,28 @@ class CephPGPlugin(base.Base):
         json_data = json.loads(output)
 
         pg_data = data[ceph_cluster]['pg']
+
+        # set default to 0 for all
+        pg_data['creating'] = 0
+        pg_data['clean'] = 0
+        pg_data['active'] = 0
+        pg_data['down'] = 0
+        pg_data['replay'] = 0
+        pg_data['splitting'] = 0
+        pg_data['scrubbing'] = 0
+        pg_data['degraded'] = 0
+        pg_data['inconsistent'] = 0
+        pg_data['peering'] = 0
+        pg_data['repair'] = 0
+        pg_data['recovering'] = 0
+        pg_data['undersized'] = 0
+        pg_data['backfill'] = 0
+        pg_data['wait-backfill'] = 0
+        pg_data['backfill-toofull'] = 0
+        pg_data['incomplete'] = 0
+        pg_data['stale'] = 0
+        pg_data['remapped'] = 0
+
         # number of pgs in each possible state
         for pg in json_data['pg_stats']:
             for state in pg['state'].split('+'):
@@ -90,11 +112,10 @@ except Exception as exc:
 def configure_callback(conf):
     """Received configuration information"""
     plugin.config_callback(conf)
+    collectd.register_read(read_callback, plugin.interval)
 
 def read_callback():
     """Callback triggerred by collectd on read"""
     plugin.read_callback()
 
 collectd.register_config(configure_callback)
-collectd.register_read(read_callback, plugin.interval)
-

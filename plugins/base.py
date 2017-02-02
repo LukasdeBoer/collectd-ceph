@@ -129,4 +129,3 @@ class Base(object):
     def logdebug(self, msg):
         if self.debug:
             collectd.info("%s: %s" % (self.prefix, msg))
-

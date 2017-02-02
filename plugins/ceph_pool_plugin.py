@@ -54,7 +54,9 @@ class CephPoolPlugin(base.Base):
             osd_pool_cmdline='ceph osd pool stats -f json --cluster ' + self.cluster
             stats_output = subprocess.check_output(osd_pool_cmdline, shell=True)
             cephdf_cmdline='ceph df -f json --cluster ' + self.cluster 
-            df_output = subprocess.check_output(ceph_dfcmdline, shell=True)
+            df_output = subprocess.check_output(cephdf_cmdline, shell=True)
+            ceph_status_cmdline='ceph -s -f json --cluster ' + self.cluster
+            ceph_status_output = subprocess.check_output(ceph_status_cmdline, shell=True)
         except Exception as exc:
             collectd.error("ceph-pool: failed to ceph pool stats :: %s :: %s"
                     % (exc, traceback.format_exc()))
@@ -62,19 +64,21 @@ class CephPoolPlugin(base.Base):
 
         if stats_output is None:
             collectd.error('ceph-pool: failed to ceph osd pool stats :: output was None')
-
         if df_output is None:
             collectd.error('ceph-pool: failed to ceph df :: output was None')
+        if ceph_status_output is None:
+            collectd.error('ceph-pool: failed to get ceph -s :: output was None')
 
         json_stats_data = json.loads(stats_output)
         json_df_data = json.loads(df_output)
+        json_ceph_status = json.loads(ceph_status_output)
 
         # push osd pool stats results
         for pool in json_stats_data:
             pool_key = "pool-%s" % pool['pool_name']
             data[ceph_cluster][pool_key] = {}
             pool_data = data[ceph_cluster][pool_key] 
-            for stat in ('read_bytes_sec', 'write_bytes_sec', 'op_per_sec'):
+            for stat in ('read_bytes_sec', 'write_bytes_sec', 'op_per_sec', 'write_op_per_sec', 'read_op_per_sec'):
                 pool_data[stat] = pool['client_io_rate'][stat] if pool['client_io_rate'].has_key(stat) else 0
 
         # push df results
@@ -96,6 +100,14 @@ class CephPoolPlugin(base.Base):
             data[ceph_cluster]['cluster']['total_used'] = int(json_df_data['stats']['total_used']) * 1024.0
             data[ceph_cluster]['cluster']['total_avail'] = int(json_df_data['stats']['total_avail']) * 1024.0
 
+        # push ceph health
+        if json_ceph_status['health']['overall_status'] == "HEALTH_OK":
+            data[ceph_cluster]['cluster']['overall_health'] = 0
+        elif json_ceph_status['health']['overall_status'] == "HEALTH_WARN":
+            data[ceph_cluster]['cluster']['overall_health'] = 1
+        elif json_ceph_status['health']['overall_status'] == "HEALTH_ERR":
+            data[ceph_cluster]['cluster']['overall_health'] = 2
+
         return data
 
 try:
@@ -107,11 +119,10 @@ except Exception as exc:
 def configure_callback(conf):
     """Received configuration information"""
     plugin.config_callback(conf)
+    collectd.register_read(read_callback, plugin.interval)
 
 def read_callback():
     """Callback triggerred by collectd on read"""
     plugin.read_callback()
 
 collectd.register_config(configure_callback)
-collectd.register_read(read_callback, plugin.interval)
-
